@@ -6,7 +6,7 @@ from tornado import gen
 from traitlets import Unicode, Int, Bool, Union, List
 
 
-class LDAPAuthenticator(Authenticator):
+class BPAuthenticator(Authenticator):
     server_address = Unicode(
         config=True,
         help='Address of LDAP server to contact'
