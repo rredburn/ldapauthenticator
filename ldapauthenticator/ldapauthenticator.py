@@ -73,27 +73,51 @@ class LDAPAuthenticator(Authenticator):
             self.log.warn('Empty password')
             return None
 
-        userdn = self.bind_dn_template.format(username=username)
-
         server = ldap3.Server(
             self.server_address,
             port=self.server_port,
             use_ssl=self.use_ssl
         )
-        conn = ldap3.Connection(server, user=userdn, password=password)
 
-        if conn.bind():
-            if self.allowed_groups:
-                for group in self.allowed_groups:
-                    if conn.search(
-                        group,
-                        search_scope=ldap3.BASE,
-                        search_filter='(member={userdn})'.format(userdn=userdn),
-                        attributes=['member']
-                    ):
-                        return username
-            else:
-                return username
-        else:
-            self.log.warn('Invalid password')
+        userdn = None
+        with ldap3.Connection(server, authentication=None, read_only=True) as conn:
+            # translate email to serial
+            if conn.search(search_base='ou=bluepages,o=ibm.com', 
+                           search_scope=ldap3.SUBTREE, 
+                           search_filter="(&(objectClass=ibmperson)(emailaddress=%s)" % username,
+                           attributes=['dn']):
+                for entry in conn.response:
+                    userdn = entry['dn']
+                    self.log.debug('userdn for %s is %s', username, userdn)
+                    break
+
+        if userdn is None:
+            self.log.warn('could not determine userdn for %s', username)
             return None
+
+        with ldap3.Connection(server, user=userdn, password=password, read_only=True) as conn
+            if not conn.bind():
+                self.log.warn('login failed, likely invalid password')
+                return None
+
+        if self.allowed_groups:
+            server = ldap3.Server(
+                'bluegroups.ibm.com'
+                port=self.server_port,
+                use_ssl=self.use_ssl
+            )
+            with ldap3.Connection(server, authentication=None, read_only=True):
+                for group in self.allowed_groups:
+                    if conn.search(search_base='ou=memberlist,ou=ibmgroups,o=ibm.com',
+                                   search_scope=ldap3.SUBTREE,
+                                   search_filter="(&(objectclass=groupofuniquenames)(cn=%s))" % group,
+                                   attributes=['uniquemember']):
+                        if len(conn.response) == 1:
+                            if userdn in conn.response[0]['attributes']['uniquemember']:
+                                return username
+                        else:
+                            self.log.warn('failed to find bluegroup %s', group
+                self.log.warn('login failed, not in correct bluegroup')
+                return None
+        else:
+            return username
