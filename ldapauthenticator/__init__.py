@@ -1,3 +1,3 @@
-from ldapauthenticator.ldapauthenticator import LDAPAuthenticator
+from .bpauthenticator import BPAuthenticator
 
-__all__ = [LDAPAuthenticator]
+__all__ = [BPAuthenticator]

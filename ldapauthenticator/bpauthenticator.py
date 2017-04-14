@@ -43,8 +43,8 @@ class BPAuthenticator(Authenticator):
 
 
     allowed_groups = List(
-	config=True,
-	help="List of LDAP Group DNs whose members are allowed access"
+        config=True,
+        help="List of LDAP Group DNs whose members are allowed access"
     )
 
     valid_username_regex = Unicode(
@@ -60,12 +60,14 @@ class BPAuthenticator(Authenticator):
 
     @gen.coroutine
     def authenticate(self, handler, data):
-        username = data['username']
+        email = data['username']
         password = data['password']
+        atloc = email.find('@')
+        username = email[:atloc] if atloc > 0 else email
 
         # Protect against invalid usernames as well as LDAP injection attacks
-        if not re.match(self.valid_username_regex, username):
-            self.log.warn('Invalid username')
+        if not re.match(self.valid_username_regex, email):
+            self.log.warn("Invalid username '%s'", email)
             return None
 
         # No empty passwords!
@@ -82,27 +84,27 @@ class BPAuthenticator(Authenticator):
         userdn = None
         with ldap3.Connection(server, authentication=None, read_only=True) as conn:
             # translate email to serial
-            if conn.search(search_base='ou=bluepages,o=ibm.com', 
-                           search_scope=ldap3.SUBTREE, 
-                           search_filter="(&(objectClass=ibmperson)(emailaddress=%s)" % username,
+            if conn.search(search_base='ou=bluepages,o=ibm.com',
+                           search_scope=ldap3.SUBTREE,
+                           search_filter="(&(objectClass=ibmperson)(emailaddress=%s))" % email,
                            attributes=['dn']):
                 for entry in conn.response:
                     userdn = entry['dn']
-                    self.log.debug('userdn for %s is %s', username, userdn)
+                    self.log.debug('userdn for %s is %s', email, userdn)
                     break
 
         if userdn is None:
-            self.log.warn('could not determine userdn for %s', username)
+            self.log.warn('could not determine userdn for %s', email)
             return None
 
-        with ldap3.Connection(server, user=userdn, password=password, read_only=True) as conn
+        with ldap3.Connection(server, user=userdn, password=password, read_only=True) as conn:
             if not conn.bind():
                 self.log.warn('login failed, likely invalid password')
                 return None
 
         if self.allowed_groups:
             server = ldap3.Server(
-                'bluegroups.ibm.com'
+                'bluegroups.ibm.com',
                 port=self.server_port,
                 use_ssl=self.use_ssl
             )
@@ -116,7 +118,8 @@ class BPAuthenticator(Authenticator):
                             if userdn in conn.response[0]['attributes']['uniquemember']:
                                 return username
                         else:
-                            self.log.warn('failed to find bluegroup %s', group
+                            self.log.warn('failed to find bluegroup %s', group)
+                # should have returned by this point
                 self.log.warn('login failed, not in correct bluegroup')
                 return None
         else:
