@@ -108,7 +108,7 @@ class BPAuthenticator(Authenticator):
                 port=self.server_port,
                 use_ssl=self.use_ssl
             )
-            with ldap3.Connection(server, authentication=None, read_only=True):
+            with ldap3.Connection(server, authentication=None, read_only=True) as conn:
                 for group in self.allowed_groups:
                     if conn.search(search_base='ou=memberlist,ou=ibmgroups,o=ibm.com',
                                    search_scope=ldap3.SUBTREE,
